@@ -1,0 +1,41 @@
+basePath: /
+host: localhost:8080
+info:
+  contact: {}
+  description: This is a service that resolves Steam vanity URLs and returns SteamIDs.
+  title: Steam API Wrapper
+  version: "1.0"
+paths:
+  /steam_id:
+    get:
+      parameters:
+      - description: Vanity URL
+        in: query
+        name: vanity
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Retrieve steamID under vanityID if it exists
+      tags:
+      - steamProfile
+swagger: "2.0"
