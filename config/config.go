@@ -11,6 +11,7 @@ type Config struct {
 	ListenAddr  string
 	SteamAPIKey string
 	RedisAddr   string
+	DB_URL      string
 }
 
 func Load() *Config {
@@ -19,6 +20,7 @@ func Load() *Config {
 	listenAddr := getEnv("LISTEN_ADDR", ":8080")
 	steamAPIKey := os.Getenv("STEAM_API_KEY")
 	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
+	db_url := os.Getenv("POSTGRES_DSN")
 
 	if steamAPIKey == "" {
 		log.Fatal("STEAM_API_KEY is not set")
@@ -28,6 +30,7 @@ func Load() *Config {
 		ListenAddr:  listenAddr,
 		SteamAPIKey: steamAPIKey,
 		RedisAddr:   redisAddr,
+		DB_URL:      db_url,
 	}
 }
 

@@ -29,7 +29,7 @@ func main() {
 
 	server, err := server.NewServer(cfg, rdb)
 	if err != nil {
-		log.Fatalf("Couldn't start server: %v", err)
+		log.Fatalf("Couldn't сreate server: %v", err)
 	}
 	log.Fatal(server.Start())
 }
