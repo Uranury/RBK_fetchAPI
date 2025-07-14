@@ -30,7 +30,7 @@ func (s *SteamService) ResolveVanityURL(vanityName string) (string, error) {
 	params := map[string]interface{}{"vanityName": vanityName}
 
 	if steamID, err := s.Cache.Get(ctx, cacheKey).Result(); err == nil {
-		_ = s.steamRepo.SaveRequestHistory("ResolveVanityURL", params, true, "", time.Since(start))
+		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, true, "", time.Since(start))
 		return steamID, nil
 	}
 
@@ -38,14 +38,14 @@ func (s *SteamService) ResolveVanityURL(vanityName string) (string, error) {
 
 	resp, err := http.Get(url)
 	if err != nil {
-		_ = s.steamRepo.SaveRequestHistory("ResolveVanityURL", params, false, err.Error(), time.Since(start))
+		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, false, err.Error(), time.Since(start))
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		msg := fmt.Sprintf("SteamAPI responded with status: %s", resp.Status)
-		_ = s.steamRepo.SaveRequestHistory("ResolveVanityURL", params, false, msg, time.Since(start))
+		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, false, msg, time.Since(start))
 		return "", errors.New(msg)
 	}
 
@@ -58,19 +58,19 @@ func (s *SteamService) ResolveVanityURL(vanityName string) (string, error) {
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		_ = s.steamRepo.SaveRequestHistory("ResolveVanityURL", params, false, err.Error(), time.Since(start))
+		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, false, err.Error(), time.Since(start))
 		return "", err
 	}
 
 	if result.Response.Success != 1 {
 		msg := fmt.Sprintf("could not resolve vanity URL: %s", result.Response.Message)
-		_ = s.steamRepo.SaveRequestHistory("ResolveVanityURL", params, false, msg, time.Since(start))
+		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, false, msg, time.Since(start))
 		return "", fmt.Errorf("could not resolve vanity URL: %s", result.Response.Message)
 	}
 
 	if err := s.Cache.Set(ctx, cacheKey, result.Response.SteamID, time.Minute*5).Err(); err != nil {
 		log.Println("failed to cache vanity")
 	}
-	_ = s.steamRepo.SaveRequestHistory("ResolveVanityURL", params, true, "", time.Since(start))
+	_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, true, "", time.Since(start))
 	return result.Response.SteamID, nil
 }
