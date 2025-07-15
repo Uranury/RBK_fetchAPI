@@ -57,4 +57,7 @@ func (s *Server) setupRoutes() {
 		c.JSON(200, gin.H{"msg": "pong"})
 	})
 	s.router.GET("/steam_id", s.userHandler.GetVanityProfile)
+	s.router.GET("/games", s.userHandler.GetOwnedGames)
+	s.router.GET("/summary", s.userHandler.GetUserSummary)
+	s.router.GET("/achievements", s.userHandler.GetUserAchievements)
 }

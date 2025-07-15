@@ -29,11 +29,58 @@ func (h *UserHandler) GetVanityProfile(c *gin.Context) {
 		return
 	}
 
-	steamID, err := h.steamService.ResolveVanityURL(vanity)
+	steamID, err := h.steamService.ResolveVanityURL(c.Request.Context(), vanity)
 	if err != nil {
 		c.JSON(500, gin.H{"error": "failed to resolve vanity URL"})
 		return
 	}
 
 	c.JSON(200, gin.H{"steamID": steamID})
+}
+
+func (h *UserHandler) GetOwnedGames(c *gin.Context) {
+	steamID := c.Query("steamID")
+	if steamID == "" {
+		c.JSON(400, gin.H{"error": "steam_id is required"})
+		return
+	}
+
+	ownedGames, err := h.steamService.GetOwnedGames(c.Request.Context(), steamID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to get owned games"})
+		return
+	}
+
+	c.JSON(200, ownedGames)
+}
+
+func (h *UserHandler) GetUserSummary(c *gin.Context) {
+	steamID := c.Query("steamID")
+	if steamID == "" {
+		c.JSON(400, gin.H{"error": "steam_id is required"})
+		return
+	}
+
+	summary, err := h.steamService.GetPlayerSummaries(c.Request.Context(), steamID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to get summary"})
+		return
+	}
+
+	c.JSON(200, summary)
+}
+
+func (h *UserHandler) GetUserAchievements(c *gin.Context) {
+	steamID, appID := c.Query("steamID"), c.Query("appID")
+	if steamID == "" || appID == "" {
+		c.JSON(400, gin.H{"error": "steam_id and app_id are required"})
+	}
+
+	achievements, err := h.steamService.GetPlayerAchievements(c.Request.Context(), steamID, appID)
+	if err != nil {
+		c.JSON(500, gin.H{"error": "failed to get achievements"})
+		return
+	}
+
+	c.JSON(200, achievements)
 }
