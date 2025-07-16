@@ -58,6 +58,7 @@ func (s *SteamService) ResolveVanityURL(ctx context.Context, vanityName string) 
 	if err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
 		return "", fmt.Errorf("ResolveVanityURL request creation failed: %w", err)
+		// return "", apperrors.NewAPIError{404, err.Error()}
 	}
 
 	resp, err := s.HTTPClient.Do(req)
