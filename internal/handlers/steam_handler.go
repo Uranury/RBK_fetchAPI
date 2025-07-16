@@ -86,5 +86,3 @@ func (h *UserHandler) GetUserAchievements(c *gin.Context) {
 
 	c.JSON(200, achievements)
 }
-
-// checking
