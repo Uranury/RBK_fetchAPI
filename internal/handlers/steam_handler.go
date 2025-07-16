@@ -13,6 +13,8 @@ func NewUserHandler(steamService *services.SteamService) *UserHandler {
 	return &UserHandler{steamService: steamService}
 }
 
+// TODO: edit swagger so that in success it returns not a map, but the model
+
 // GetSteamID godoc
 // @Summary      Retrieve steamID under vanityID if it exists
 // @Tags         steamProfile
@@ -31,7 +33,7 @@ func (h *UserHandler) GetVanityProfile(c *gin.Context) {
 
 	steamID, err := h.steamService.ResolveVanityURL(c.Request.Context(), vanity)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "failed to resolve vanity URL"})
+		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -47,7 +49,7 @@ func (h *UserHandler) GetOwnedGames(c *gin.Context) {
 
 	ownedGames, err := h.steamService.GetOwnedGames(c.Request.Context(), steamID)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "failed to get owned games"})
+		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -63,7 +65,7 @@ func (h *UserHandler) GetUserSummary(c *gin.Context) {
 
 	summary, err := h.steamService.GetPlayerSummaries(c.Request.Context(), steamID)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "failed to get summary"})
+		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
@@ -78,7 +80,7 @@ func (h *UserHandler) GetUserAchievements(c *gin.Context) {
 
 	achievements, err := h.steamService.GetPlayerAchievements(c.Request.Context(), steamID, appID)
 	if err != nil {
-		c.JSON(500, gin.H{"error": "failed to get achievements"})
+		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 

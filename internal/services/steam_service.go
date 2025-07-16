@@ -47,12 +47,6 @@ func (s *SteamService) ResolveVanityURL(ctx context.Context, vanityName string) 
 	endpoint := "/steam_id:ResolveVanityURL"
 	params := map[string]interface{}{"vanityName": vanityName}
 
-	if vanityName == "" {
-		err := errors.New("vanityName cannot be empty")
-		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return "", fmt.Errorf("ResolveVanityURL: %w", err)
-	}
-
 	cacheKey := fmt.Sprintf("vanity:%s", vanityName)
 	if steamID, err := s.Cache.Get(ctx, cacheKey).Result(); err == nil {
 		s.logRequest(endpoint, params, true, "", time.Since(start))
@@ -117,12 +111,6 @@ func (s *SteamService) GetOwnedGames(ctx context.Context, steamID string) (*mode
 	endpoint := "/games:GetOwnedGames"
 	params := map[string]interface{}{"steam_id": steamID}
 
-	if steamID == "" {
-		err := errors.New("steamID cannot be empty")
-		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetOwnedGames: %w", err)
-	}
-
 	cacheKey := fmt.Sprintf("owned_games:%s", steamID)
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()
 	if err == nil {
@@ -179,12 +167,6 @@ func (s *SteamService) GetPlayerSummaries(ctx context.Context, steamID string) (
 	start := time.Now()
 	endpoint := "/summary:GetPlayerSummaries"
 	params := map[string]interface{}{"steam_id": steamID}
-
-	if steamID == "" {
-		err := errors.New("steamID cannot be empty")
-		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetPlayerSummaries: %w", err)
-	}
 
 	cacheKey := fmt.Sprintf("summary:%s", steamID)
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()
