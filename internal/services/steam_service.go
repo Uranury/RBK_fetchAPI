@@ -14,45 +14,69 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// TODO: inject and reuse an http.Client with timeout
-// TODO: replace all http.Get calls with http.NewRequestWithContext + client.Do
-// TODO: add request history saving consistently across all SteamService methods
-// TODO: validate Steam API response bodies for "success": false and other edge cases
-// TODO: improve error wrapping/logging for JSON decoding and API failures
-// TODO: extract hardcoded URLs into constants
+const (
+	resolveVanityURLTemplate = "http://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?key=%s&vanityurl=%s"
+	ownedGamesURLTemplate    = "https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=%s&steamid=%s&include_appinfo=true"
+	playerSummariesTemplate  = "http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=%s&steamids=%s"
+)
+
 type SteamService struct {
-	APIKey    string
-	Cache     *redis.Client
-	steamRepo repositories.SteamRepository
+	APIKey     string
+	Cache      *redis.Client
+	steamRepo  repositories.SteamRepository
+	HTTPClient *http.Client
 }
 
-func NewSteamService(APIKey string, Cache *redis.Client, steamRepo repositories.SteamRepository) *SteamService {
-	return &SteamService{APIKey: APIKey, Cache: Cache, steamRepo: steamRepo}
+func NewSteamService(APIKey string, Cache *redis.Client, steamRepo repositories.SteamRepository, client *http.Client) *SteamService {
+	return &SteamService{
+		APIKey:     APIKey,
+		Cache:      Cache,
+		steamRepo:  steamRepo,
+		HTTPClient: client,
+	}
+}
+
+func (s *SteamService) logRequest(endpoint string, params map[string]interface{}, success bool, errorMsg string, duration time.Duration) {
+	if err := s.steamRepo.SaveRequestHistory(endpoint, params, success, errorMsg, duration); err != nil {
+		log.Printf("failed to save request history: %v", err)
+	}
 }
 
 func (s *SteamService) ResolveVanityURL(ctx context.Context, vanityName string) (string, error) {
 	start := time.Now()
-	cacheKey := fmt.Sprintf("vanity:%s", vanityName)
+	endpoint := "/steam_id:ResolveVanityURL"
 	params := map[string]interface{}{"vanityName": vanityName}
 
+	if vanityName == "" {
+		err := errors.New("vanityName cannot be empty")
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return "", fmt.Errorf("ResolveVanityURL: %w", err)
+	}
+
+	cacheKey := fmt.Sprintf("vanity:%s", vanityName)
 	if steamID, err := s.Cache.Get(ctx, cacheKey).Result(); err == nil {
-		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, true, "", time.Since(start))
+		s.logRequest(endpoint, params, true, "", time.Since(start))
 		return steamID, nil
 	}
 
-	url := fmt.Sprintf("http://api.steampowered.com/ISteamUser/ResolveVanityURL/v0001/?key=%s&vanityurl=%s", s.APIKey, vanityName)
-
-	resp, err := http.Get(url)
+	url := fmt.Sprintf(resolveVanityURLTemplate, s.APIKey, vanityName)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, false, err.Error(), time.Since(start))
-		return "", err
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return "", fmt.Errorf("ResolveVanityURL request creation failed: %w", err)
+	}
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return "", fmt.Errorf("ResolveVanityURL API call failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		msg := fmt.Sprintf("SteamAPI responded with status: %s", resp.Status)
-		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, false, msg, time.Since(start))
-		return "", errors.New(msg)
+		err := fmt.Errorf("steam API responded with status: %s", resp.Status)
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return "", fmt.Errorf("ResolveVanityURL: %w", err)
 	}
 
 	var result struct {
@@ -64,242 +88,154 @@ func (s *SteamService) ResolveVanityURL(ctx context.Context, vanityName string) 
 	}
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, false, err.Error(), time.Since(start))
-		return "", err
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return "", fmt.Errorf("ResolveVanityURL JSON decode failed: %w", err)
 	}
 
 	if result.Response.Success != 1 {
-		msg := fmt.Sprintf("could not resolve vanity URL: %s", result.Response.Message)
-		_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, false, msg, time.Since(start))
-		return "", fmt.Errorf("could not resolve vanity URL: %s", result.Response.Message)
+		err := fmt.Errorf("could not resolve vanity URL: %s", result.Response.Message)
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return "", fmt.Errorf("ResolveVanityURL: %w", err)
 	}
 
-	if err := s.Cache.Set(ctx, cacheKey, result.Response.SteamID, time.Minute*5).Err(); err != nil {
-		log.Println("failed to cache vanity")
+	if result.Response.SteamID == "" {
+		err := errors.New("empty steamID in API response")
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return "", fmt.Errorf("ResolveVanityURL: %w", err)
 	}
-	_ = s.steamRepo.SaveRequestHistory("/steam_id:ResolveVanityURL", params, true, "", time.Since(start))
+
+	if err := s.Cache.Set(ctx, cacheKey, result.Response.SteamID, 5*time.Minute).Err(); err != nil {
+		log.Printf("failed to cache vanity: %v", err)
+	}
+
+	s.logRequest(endpoint, params, true, "", time.Since(start))
 	return result.Response.SteamID, nil
 }
 
 func (s *SteamService) GetOwnedGames(ctx context.Context, steamID string) (*models.OwnedGamesResponse, error) {
+	start := time.Now()
+	endpoint := "/games:GetOwnedGames"
+	params := map[string]interface{}{"steam_id": steamID}
+
+	if steamID == "" {
+		err := errors.New("steamID cannot be empty")
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetOwnedGames: %w", err)
+	}
+
 	cacheKey := fmt.Sprintf("owned_games:%s", steamID)
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()
 	if err == nil {
 		var games models.OwnedGamesResponse
 		if err := json.Unmarshal([]byte(cached), &games); err == nil {
+			s.logRequest(endpoint, params, true, "", time.Since(start))
 			return &games, nil
 		}
+		log.Printf("failed to unmarshal cached games: %v", err)
 	}
 
-	url := fmt.Sprintf(
-		"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/?key=%s&steamid=%s&include_appinfo=true",
-		s.APIKey,
-		steamID,
-	)
-	var response models.OwnedGamesResponse
-
-	resp, err := http.Get(url)
+	url := fmt.Sprintf(ownedGamesURLTemplate, s.APIKey, steamID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetOwnedGames request creation failed: %w", err)
+	}
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetOwnedGames API call failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("steam API responded with status: %s", resp.Status)
+		err := fmt.Errorf("steam API responded with status: %s", resp.Status)
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetOwnedGames: %w", err)
 	}
 
+	var response models.OwnedGamesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetOwnedGames JSON decode failed: %w", err)
+	}
+
+	if response.Response.GameCount == 0 {
+		log.Printf("no games found for steamID: %s", steamID)
 	}
 
 	bytes, err := json.Marshal(response)
 	if err == nil {
-		s.Cache.Set(ctx, cacheKey, bytes, time.Minute*5)
+		if err := s.Cache.Set(ctx, cacheKey, bytes, 5*time.Minute).Err(); err != nil {
+			log.Printf("failed to cache owned games: %v", err)
+		}
 	}
 
+	s.logRequest(endpoint, params, true, "", time.Since(start))
 	return &response, nil
 }
 
 func (s *SteamService) GetPlayerSummaries(ctx context.Context, steamID string) (*models.Summary, error) {
-	cacheKey := fmt.Sprintf("summary:%s", steamID)
+	start := time.Now()
+	endpoint := "/summary:GetPlayerSummaries"
+	params := map[string]interface{}{"steam_id": steamID}
 
+	if steamID == "" {
+		err := errors.New("steamID cannot be empty")
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetPlayerSummaries: %w", err)
+	}
+
+	cacheKey := fmt.Sprintf("summary:%s", steamID)
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()
 	if err == nil {
 		var summary models.Summary
 		if err := json.Unmarshal([]byte(cached), &summary); err == nil {
+			s.logRequest(endpoint, params, true, "", time.Since(start))
 			return &summary, nil
 		}
+		log.Printf("failed to unmarshal cached summary: %v", err)
 	}
 
-	url := fmt.Sprintf(
-		"http://api.steampowered.com/ISteamUser/GetPlayerSummaries/v0002/?key=%s&steamids=%s",
-		s.APIKey,
-		steamID,
-	)
+	url := fmt.Sprintf(playerSummariesTemplate, s.APIKey, steamID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetPlayerSummaries request creation failed: %w", err)
+	}
+
+	resp, err := s.HTTPClient.Do(req)
+	if err != nil {
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetPlayerSummaries API call failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("steam API responded with status: %s", resp.Status)
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetPlayerSummaries: %w", err)
+	}
+
 	var result models.Summary
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to make request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("steam API responded with status: %s", resp.Status)
-	}
-
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetPlayerSummaries JSON decode failed: %w", err)
+	}
+
+	if len(result.Response.Players) == 0 {
+		err := fmt.Errorf("no player found for steamID: %s", steamID)
+		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
+		return nil, fmt.Errorf("GetPlayerSummaries: %w", err)
 	}
 
 	bytes, err := json.Marshal(result)
 	if err == nil {
-		s.Cache.Set(ctx, cacheKey, bytes, time.Minute*5)
-	}
-
-	return &result, nil
-}
-
-func (s *SteamService) GetPlayerAchievements(ctx context.Context, steamID, appID string) (*models.PlayerAchievements, error) {
-	cacheKey := fmt.Sprintf("player_achievements:%s:game:%s", steamID, appID)
-
-	cached, err := s.Cache.Get(ctx, cacheKey).Result()
-	if err == nil {
-		var achievements models.PlayerAchievements
-		if err := json.Unmarshal([]byte(cached), &achievements); err == nil {
-			return &achievements, nil
-		}
-	}
-	// Get player achievements
-	playerAchievements, err := s.fetchPlayerAchievements(ctx, steamID, appID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch player achievements: %w", err)
-	}
-
-	// Get game schema to get achievement names and descriptions
-	gameSchema, err := s.fetchGameSchema(ctx, appID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch game schema: %w", err)
-	}
-
-	// Create a map for quick lookup of achievement details
-	schemaMap := make(map[string]models.Achievement)
-	for _, ach := range gameSchema.Game.AvailableGameStats.Achievements {
-		schemaMap[ach.Name] = models.Achievement{
-			Name:        ach.Name,
-			DisplayName: ach.DisplayName,
-			Description: ach.Description,
-			Icon:        ach.Icon,
-			IconGray:    ach.IconGray,
+		if err := s.Cache.Set(ctx, cacheKey, bytes, 5*time.Minute).Err(); err != nil {
+			log.Printf("failed to cache player summary: %v", err)
 		}
 	}
 
-	// Combine player achievements with schema data
-	result := &models.PlayerAchievements{
-		SteamID:  playerAchievements.PlayerStats.SteamID,
-		GameName: playerAchievements.PlayerStats.GameName,
-	}
-
-	for _, playerAch := range playerAchievements.PlayerStats.Achievements {
-		if schemaAch, exists := schemaMap[playerAch.APIName]; exists {
-			achievement := models.Achievement{
-				Name:        schemaAch.Name,
-				DisplayName: schemaAch.DisplayName,
-				Description: schemaAch.Description,
-				Achieved:    playerAch.Achieved == 1,
-				Icon:        schemaAch.Icon,
-				IconGray:    schemaAch.IconGray,
-			}
-
-			// Format unlock time correctly (convert from Unix timestamp)
-			if playerAch.Achieved == 1 && playerAch.UnlockTime > 0 {
-				achievement.UnlockTime = time.Unix(playerAch.UnlockTime, 0)
-			}
-
-			result.Achievements = append(result.Achievements, achievement)
-		}
-	}
-
-	bytes, err := json.Marshal(result)
-	if err == nil {
-		s.Cache.Set(ctx, cacheKey, bytes, time.Minute*5)
-	}
-
-	return result, nil
-}
-
-func (s *SteamService) fetchPlayerAchievements(ctx context.Context, steamID, appID string) (*models.PlayerAchievementsResponse, error) {
-	cacheKey := fmt.Sprintf("fetched_player_achievements:%s:game:%s", steamID, appID)
-
-	cached, err := s.Cache.Get(ctx, cacheKey).Result()
-	if err == nil {
-		var achievements models.PlayerAchievementsResponse
-		if err := json.Unmarshal([]byte(cached), &achievements); err == nil {
-			return &achievements, nil
-		}
-	}
-
-	url := fmt.Sprintf("http://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/?appid=%s&key=%s&steamid=%s", appID, s.APIKey, steamID)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
-	}
-
-	var result models.PlayerAchievementsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	if !result.PlayerStats.Success {
-		return nil, fmt.Errorf("steam API returned success=false")
-	}
-
-	bytes, err := json.Marshal(result)
-	if err == nil {
-		s.Cache.Set(ctx, cacheKey, bytes, time.Minute*5)
-	}
-
-	return &result, nil
-}
-
-func (s *SteamService) fetchGameSchema(ctx context.Context, appID string) (*models.GameSchemaResponse, error) {
-	cacheKey := fmt.Sprintf("game_schema:%s", appID)
-
-	cached, err := s.Cache.Get(ctx, cacheKey).Result()
-	if err == nil {
-		var schema models.GameSchemaResponse
-		if err := json.Unmarshal([]byte(cached), &schema); err == nil {
-			return &schema, nil
-		}
-	}
-
-	url := fmt.Sprintf("http://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/?key=%s&appid=%s", s.APIKey, appID)
-
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
-	}
-
-	var result models.GameSchemaResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
-	}
-
-	bytes, err := json.Marshal(result)
-	if err == nil {
-		s.Cache.Set(ctx, cacheKey, bytes, time.Hour*336)
-	}
-
+	s.logRequest(endpoint, params, true, "", time.Since(start))
 	return &result, nil
 }

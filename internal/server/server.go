@@ -2,6 +2,8 @@ package server
 
 import (
 	"log"
+	"net/http"
+	"time"
 
 	"github.com/Uranury/RBK_fetchAPI/config"
 	"github.com/Uranury/RBK_fetchAPI/internal/db"
@@ -29,8 +31,12 @@ func NewServer(cfg *config.Config, redisClient *redis.Client) (*Server, error) {
 		return nil, err
 	}
 
+	httpClient := http.Client{
+		Timeout: time.Second * 10,
+	}
+
 	steamRepo := repositories.NewSteamRepository(Database)
-	steamService := services.NewSteamService(cfg.SteamAPIKey, redisClient, steamRepo)
+	steamService := services.NewSteamService(cfg.SteamAPIKey, redisClient, steamRepo, &httpClient)
 	userHandler := handlers.NewUserHandler(steamService)
 
 	server := &Server{
