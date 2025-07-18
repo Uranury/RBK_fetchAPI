@@ -10,7 +10,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// TODO: Add more services/features, and swagger to every handler
 // TODO: Write unit tests for services
 // TODO: Add rate limiting
 // TODO: Make docker and docker compose files

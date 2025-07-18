@@ -83,7 +83,7 @@ func (s *SteamService) ResolveVanityURL(ctx context.Context, vanityName string) 
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return "", apperrors.WrapAPIError(502, err, "ResolveVanityURL JSON decode failed")
+		return "", apperrors.WrapAPIError(500, err, "ResolveVanityURL JSON decode failed")
 	}
 
 	if result.Response.Success != 1 {
@@ -139,7 +139,7 @@ func (s *SteamService) GetOwnedGames(ctx context.Context, steamID string) (*mode
 	var response models.OwnedGamesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, apperrors.WrapAPIError(502, err, "GetOwnedGames JSON decode failed")
+		return nil, apperrors.WrapAPIError(500, err, "GetOwnedGames JSON decode failed")
 	}
 
 	if response.Response.GameCount == 0 {

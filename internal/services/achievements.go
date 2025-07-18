@@ -4,10 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/Uranury/RBK_fetchAPI/internal/apperrors"
 	"github.com/Uranury/RBK_fetchAPI/internal/models"
 )
 
@@ -17,7 +19,7 @@ const (
 	fetchGlobalAchievementPercentagesTemplate = "http://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/?gameid=%s"
 )
 
-func (s *SteamService) GetPlayerAchievements(ctx context.Context, steamID, appID string) (*models.PlayerAchievements, error) {
+func (s *SteamService) GetPlayerAchievements(ctx context.Context, steamID, appID string) (*models.PlayerAchievements, *apperrors.APIError) {
 	cacheKey := fmt.Sprintf("player_achievements:%s:game:%s", steamID, appID)
 
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()
@@ -28,22 +30,20 @@ func (s *SteamService) GetPlayerAchievements(ctx context.Context, steamID, appID
 		}
 	}
 
-	// Get player achievements
-	playerAchievements, err := s.fetchPlayerAchievements(ctx, steamID, appID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch player achievements: %w", err)
+	playerAchievements, apiError := s.fetchPlayerAchievements(ctx, steamID, appID)
+	if apiError != nil {
+		return nil, apiError
 	}
 
-	// Get game schema to get achievement names and descriptions
-	gameSchema, err := s.fetchGameSchema(ctx, appID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch game schema: %w", err)
+	gameSchema, apiError := s.fetchGameSchema(ctx, appID)
+	if apiError != nil {
+		return nil, apiError
 	}
 
 	// Get global achievement percentages for rarity
 	globalPercentages, err := s.fetchGlobalAchievementPercentages(ctx, appID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch global achievement percentages: %w", err)
+		return nil, apiError
 	}
 
 	// Create maps for quick lookup
@@ -94,13 +94,15 @@ func (s *SteamService) GetPlayerAchievements(ctx context.Context, steamID, appID
 
 	bytes, err := json.Marshal(result)
 	if err == nil {
-		s.Cache.Set(ctx, cacheKey, bytes, time.Minute*5)
+		if err := s.Cache.Set(ctx, cacheKey, bytes, time.Minute*5).Err(); err != nil {
+			log.Printf("failed to cache GetAchievements: %v", err)
+		}
 	}
 
 	return result, nil
 }
 
-func (s *SteamService) fetchPlayerAchievements(ctx context.Context, steamID, appID string) (*models.PlayerAchievementsResponse, error) {
+func (s *SteamService) fetchPlayerAchievements(ctx context.Context, steamID, appID string) (*models.PlayerAchievementsResponse, *apperrors.APIError) {
 	cacheKey := fmt.Sprintf("fetched_player_achievements:%s:game:%s", steamID, appID)
 
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()
@@ -109,43 +111,47 @@ func (s *SteamService) fetchPlayerAchievements(ctx context.Context, steamID, app
 		if err := json.Unmarshal([]byte(cached), &achievements); err == nil {
 			return &achievements, nil
 		}
+		log.Printf("failed to unmarshal cached Achievements: %v", err)
 	}
 
 	url := fmt.Sprintf(fetchPlayerAchievementsTemplate, appID, s.APIKey, steamID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchPlayerAchievements request creation failed")
 	}
 
 	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchPlayerAchievements request failed")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+		err := fmt.Errorf("steam API responded with status: %s", resp.Status)
+		return nil, apperrors.WrapAPIError(resp.StatusCode, err, "")
 	}
 
 	var result models.PlayerAchievementsResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchPlayerAchievements failed to decode JSON")
 	}
 
 	if !result.PlayerStats.Success {
-		return nil, fmt.Errorf("steam API returned success=false")
+		return nil, apperrors.WrapAPIError(409, err, "fetchPlayerAchievements, invalid appID or private profile")
 	}
 
 	bytes, err := json.Marshal(result)
 	if err == nil {
-		s.Cache.Set(ctx, cacheKey, bytes, time.Minute*5)
+		if err := s.Cache.Set(ctx, cacheKey, bytes, 5*time.Minute).Err(); err != nil {
+			log.Printf("failed to cache fetchedAchievements: %v", err)
+		}
 	}
 
 	return &result, nil
 }
 
-func (s *SteamService) fetchGameSchema(ctx context.Context, appID string) (*models.GameSchemaResponse, error) {
+func (s *SteamService) fetchGameSchema(ctx context.Context, appID string) (*models.GameSchemaResponse, *apperrors.APIError) {
 	cacheKey := fmt.Sprintf("game_schema:%s", appID)
 
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()
@@ -154,33 +160,37 @@ func (s *SteamService) fetchGameSchema(ctx context.Context, appID string) (*mode
 		if err := json.Unmarshal([]byte(cached), &schema); err == nil {
 			return &schema, nil
 		}
+		log.Printf("Failed to get cached GameSchema: %v", err)
 	}
 
 	url := fmt.Sprintf(fetchGameSchemaTemplate, s.APIKey, appID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchGameSchema request creation failed")
 	}
 
 	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchGameSchema request failed")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+		err := fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+		return nil, apperrors.WrapAPIError(resp.StatusCode, err, "")
 	}
 
 	var result models.GameSchemaResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchGameSchema failed to decode JSON")
 	}
 
 	bytes, err := json.Marshal(result)
 	if err == nil {
-		s.Cache.Set(ctx, cacheKey, bytes, time.Hour*336)
+		if err := s.Cache.Set(ctx, cacheKey, bytes, time.Hour*336).Err(); err != nil {
+			log.Printf("failed to cache fetchedGameSchemas: %v", err)
+		}
 	}
 
 	return &result, nil
@@ -195,34 +205,37 @@ func (s *SteamService) fetchGlobalAchievementPercentages(ctx context.Context, ap
 		if err := json.Unmarshal([]byte(cached), &percentages); err == nil {
 			return &percentages, nil
 		}
+		log.Printf("failed to get cached achievement percentages: %v", err)
 	}
 
 	url := fmt.Sprintf(fetchGlobalAchievementPercentagesTemplate, appID)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchGlobalAchievementPercentages request creation failed")
 	}
 
 	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchGlobalAchievementPercentages request failed")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+		err := fmt.Errorf("API request failed with status: %d", resp.StatusCode)
+		return nil, apperrors.WrapAPIError(resp.StatusCode, err, "")
 	}
 
 	var result models.GlobalAchievementPercentagesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return nil, err
+		return nil, apperrors.WrapAPIError(500, err, "fetchGlobalAchievementPercentages failed to decode JSON")
 	}
 
 	bytes, err := json.Marshal(result)
 	if err == nil {
-		// Cache global percentages for longer since they change slowly
-		s.Cache.Set(ctx, cacheKey, bytes, time.Hour*24)
+		if err := s.Cache.Set(ctx, cacheKey, bytes, time.Hour*24).Err(); err != nil {
+			log.Printf("failed to cache GlobalAchievementPercentages: %v", err)
+		}
 	}
 
 	return &result, nil
