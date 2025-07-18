@@ -1,6 +1,9 @@
 package handlers
 
 import (
+	"log"
+
+	"github.com/Uranury/RBK_fetchAPI/internal/apperrors"
 	"github.com/Uranury/RBK_fetchAPI/internal/services"
 	"github.com/gin-gonic/gin"
 )
@@ -11,6 +14,14 @@ type UserHandler struct {
 
 func NewUserHandler(steamService *services.SteamService) *UserHandler {
 	return &UserHandler{steamService: steamService}
+}
+
+func (h *UserHandler) RespondWithError(c *gin.Context, err error) {
+	if apiErr, ok := err.(*apperrors.APIError); ok {
+		c.JSON(apiErr.StatusCode, gin.H{"error": apiErr.Message})
+	} else {
+		c.JSON(500, gin.H{"error": "internal server error"})
+	}
 }
 
 // TODO: edit swagger so that in success it returns not a map, but the model
@@ -33,7 +44,7 @@ func (h *UserHandler) GetVanityProfile(c *gin.Context) {
 
 	steamID, err := h.steamService.ResolveVanityURL(c.Request.Context(), vanity)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		h.RespondWithError(c, err)
 		return
 	}
 
@@ -49,7 +60,7 @@ func (h *UserHandler) GetOwnedGames(c *gin.Context) {
 
 	ownedGames, err := h.steamService.GetOwnedGames(c.Request.Context(), steamID)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		h.RespondWithError(c, err)
 		return
 	}
 
@@ -65,7 +76,7 @@ func (h *UserHandler) GetUserSummary(c *gin.Context) {
 
 	summary, err := h.steamService.GetPlayerSummaries(c.Request.Context(), steamID)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		h.RespondWithError(c, err)
 		return
 	}
 
@@ -80,7 +91,8 @@ func (h *UserHandler) GetUserAchievements(c *gin.Context) {
 
 	achievements, err := h.steamService.GetPlayerAchievements(c.Request.Context(), steamID, appID)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		h.RespondWithError(c, err)
+		log.Println(err.Error())
 		return
 	}
 

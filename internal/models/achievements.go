@@ -33,6 +33,15 @@ type GameSchemaResponse struct {
 	} `json:"game"`
 }
 
+type GlobalAchievementPercentagesResponse struct {
+	AchievementPercentages struct {
+		Achievements []struct {
+			Name    string `json:"name"`
+			Percent string `json:"percent"`
+		} `json:"achievements"`
+	} `json:"achievementpercentages"`
+}
+
 // Final processed achievement model
 type Achievement struct {
 	Name        string    `json:"name"`
@@ -42,6 +51,7 @@ type Achievement struct {
 	UnlockTime  time.Time `json:"unlockTime,omitempty"`
 	Icon        string    `json:"icon"`
 	IconGray    string    `json:"iconGray"`
+	Rarity      float64   `json:"rarity"` // Percentage of players who have this achievement
 }
 
 type PlayerAchievements struct {

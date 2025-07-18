@@ -14,3 +14,7 @@ func (e *APIError) Error() string {
 func NewAPIError(statusCode int, msg string) *APIError {
 	return &APIError{StatusCode: statusCode, Message: msg}
 }
+
+func WrapAPIError(status int, err error, context string) *APIError {
+	return NewAPIError(status, fmt.Sprintf("%s: %v", context, err))
+}

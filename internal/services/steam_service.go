@@ -3,12 +3,12 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"time"
 
+	"github.com/Uranury/RBK_fetchAPI/internal/apperrors"
 	"github.com/Uranury/RBK_fetchAPI/internal/models"
 	"github.com/Uranury/RBK_fetchAPI/internal/repositories"
 	"github.com/redis/go-redis/v9"
@@ -57,21 +57,20 @@ func (s *SteamService) ResolveVanityURL(ctx context.Context, vanityName string) 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return "", fmt.Errorf("ResolveVanityURL request creation failed: %w", err)
-		// return "", apperrors.NewAPIError{404, err.Error()}
+		return "", apperrors.WrapAPIError(500, err, "ResolveVanityURL request creation failed")
 	}
 
 	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return "", fmt.Errorf("ResolveVanityURL API call failed: %w", err)
+		return "", apperrors.WrapAPIError(500, err, "ResolveVanityURL request failed")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("steam API responded with status: %s", resp.Status)
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return "", fmt.Errorf("ResolveVanityURL: %w", err)
+		return "", apperrors.WrapAPIError(resp.StatusCode, err, "Unexpected error")
 	}
 
 	var result struct {
@@ -84,19 +83,13 @@ func (s *SteamService) ResolveVanityURL(ctx context.Context, vanityName string) 
 
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return "", fmt.Errorf("ResolveVanityURL JSON decode failed: %w", err)
+		return "", apperrors.WrapAPIError(502, err, "ResolveVanityURL JSON decode failed")
 	}
 
 	if result.Response.Success != 1 {
 		err := fmt.Errorf("could not resolve vanity URL: %s", result.Response.Message)
-		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return "", fmt.Errorf("ResolveVanityURL: %w", err)
-	}
-
-	if result.Response.SteamID == "" {
-		err := errors.New("empty steamID in API response")
-		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return "", fmt.Errorf("ResolveVanityURL: %w", err)
+		s.logRequest(endpoint, params, true, "", time.Since(start))
+		return "", apperrors.WrapAPIError(404, err, "No match")
 	}
 
 	if err := s.Cache.Set(ctx, cacheKey, result.Response.SteamID, 5*time.Minute).Err(); err != nil {
@@ -127,26 +120,26 @@ func (s *SteamService) GetOwnedGames(ctx context.Context, steamID string) (*mode
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetOwnedGames request creation failed: %w", err)
+		return nil, apperrors.WrapAPIError(500, err, "GetOwnedGames request creation failed")
 	}
 
 	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetOwnedGames API call failed: %w", err)
+		return nil, apperrors.WrapAPIError(500, err, "GetOwnedGames API call failed")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("steam API responded with status: %s", resp.Status)
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetOwnedGames: %w", err)
+		return nil, apperrors.WrapAPIError(resp.StatusCode, err, "Steam GetOwnedGames returned non-200")
 	}
 
 	var response models.OwnedGamesResponse
 	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetOwnedGames JSON decode failed: %w", err)
+		return nil, apperrors.WrapAPIError(502, err, "GetOwnedGames JSON decode failed")
 	}
 
 	if response.Response.GameCount == 0 {
@@ -184,32 +177,32 @@ func (s *SteamService) GetPlayerSummaries(ctx context.Context, steamID string) (
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetPlayerSummaries request creation failed: %w", err)
+		return nil, apperrors.WrapAPIError(500, err, "GetPlayerSummaries request creation failed")
 	}
 
 	resp, err := s.HTTPClient.Do(req)
 	if err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetPlayerSummaries API call failed: %w", err)
+		return nil, apperrors.WrapAPIError(500, err, "GetPlayerSummaries API call failed")
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("steam API responded with status: %s", resp.Status)
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetPlayerSummaries: %w", err)
+		return nil, apperrors.WrapAPIError(resp.StatusCode, err, "Steam GetPlayerSummaries returned non-200")
 	}
 
 	var result models.Summary
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetPlayerSummaries JSON decode failed: %w", err)
+		return nil, apperrors.WrapAPIError(500, err, "GetPlayerSummaries JSON decode failed")
 	}
 
 	if len(result.Response.Players) == 0 {
 		err := fmt.Errorf("no player found for steamID: %s", steamID)
-		s.logRequest(endpoint, params, false, err.Error(), time.Since(start))
-		return nil, fmt.Errorf("GetPlayerSummaries: %w", err)
+		s.logRequest(endpoint, params, true, err.Error(), time.Since(start))
+		return nil, apperrors.WrapAPIError(404, err, "No player found")
 	}
 
 	bytes, err := json.Marshal(result)
