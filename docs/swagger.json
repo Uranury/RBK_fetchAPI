@@ -9,6 +9,105 @@
     "host": "localhost:8080",
     "basePath": "/",
     "paths": {
+        "/achievements": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamesInfo"
+                ],
+                "summary": "returns all the achievements the user have for a game with all the details",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Steam ID of the user",
+                        "name": "steamID",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "App ID of the game",
+                        "name": "appID",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.PlayerAchievements"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "$ref": "#/definitions/apperrors.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperrors.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/games": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "gamesInfo"
+                ],
+                "summary": "returns user's owned games",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Steam ID",
+                        "name": "steamID",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.OwnedGamesResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperrors.APIError"
+                        }
+                    }
+                }
+            }
+        },
         "/steam_id": {
             "get": {
                 "produces": [
@@ -46,12 +145,235 @@
                             }
                         }
                     },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apperrors.APIError"
+                        }
+                    },
                     "500": {
                         "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperrors.APIError"
+                        }
+                    }
+                }
+            }
+        },
+        "/summary": {
+            "get": {
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "steamProfile"
+                ],
+                "summary": "returns general info about the user",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Steam ID",
+                        "name": "steamID",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/models.Summary"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
                                 "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/apperrors.APIError"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal Server Error",
+                        "schema": {
+                            "$ref": "#/definitions/apperrors.APIError"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "apperrors.APIError": {
+            "type": "object",
+            "properties": {
+                "message": {
+                    "type": "string"
+                },
+                "statusCode": {
+                    "type": "integer"
+                }
+            }
+        },
+        "models.Achievement": {
+            "type": "object",
+            "properties": {
+                "achieved": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "displayName": {
+                    "type": "string"
+                },
+                "icon": {
+                    "type": "string"
+                },
+                "iconGray": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "rarity": {
+                    "description": "Percentage of players who have this achievement",
+                    "type": "number"
+                },
+                "unlockTime": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.OwnedGamesResponse": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "type": "object",
+                    "properties": {
+                        "game_count": {
+                            "type": "integer"
+                        },
+                        "games": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "appid": {
+                                        "type": "integer"
+                                    },
+                                    "has_community_visible_stats": {
+                                        "type": "boolean"
+                                    },
+                                    "img_icon_url": {
+                                        "type": "string"
+                                    },
+                                    "img_logo_url": {
+                                        "type": "string"
+                                    },
+                                    "name": {
+                                        "type": "string"
+                                    },
+                                    "playtime_forever": {
+                                        "type": "integer"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "models.PlayerAchievements": {
+            "type": "object",
+            "properties": {
+                "achievements": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.Achievement"
+                    }
+                },
+                "gameName": {
+                    "type": "string"
+                },
+                "steamID": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.Summary": {
+            "type": "object",
+            "properties": {
+                "response": {
+                    "type": "object",
+                    "properties": {
+                        "players": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "avatar": {
+                                        "type": "string"
+                                    },
+                                    "avatarfull": {
+                                        "type": "string"
+                                    },
+                                    "avatarhash": {
+                                        "type": "string"
+                                    },
+                                    "avatarmedium": {
+                                        "type": "string"
+                                    },
+                                    "commentpermission": {
+                                        "type": "integer"
+                                    },
+                                    "communityvisibilitystate": {
+                                        "type": "integer"
+                                    },
+                                    "lastlogoff": {
+                                        "type": "integer"
+                                    },
+                                    "loccountrycode": {
+                                        "type": "string"
+                                    },
+                                    "locstatecode": {
+                                        "type": "string"
+                                    },
+                                    "personaname": {
+                                        "type": "string"
+                                    },
+                                    "personastate": {
+                                        "type": "integer"
+                                    },
+                                    "personastateflags": {
+                                        "type": "integer"
+                                    },
+                                    "primaryclanid": {
+                                        "type": "string"
+                                    },
+                                    "profilestate": {
+                                        "type": "integer"
+                                    },
+                                    "profileurl": {
+                                        "type": "string"
+                                    },
+                                    "realname": {
+                                        "type": "string"
+                                    },
+                                    "steamid": {
+                                        "type": "string"
+                                    },
+                                    "timecreated": {
+                                        "type": "integer"
+                                    }
+                                }
                             }
                         }
                     }

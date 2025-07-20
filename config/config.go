@@ -19,7 +19,7 @@ func Load() *Config {
 
 	listenAddr := getEnv("LISTEN_ADDR", ":8080")
 	steamAPIKey := os.Getenv("STEAM_API_KEY")
-	redisAddr := getEnv("REDIS_ADDR", "localhost:6379")
+	redisAddr := os.Getenv("REDIS_ADDR")
 	db_url := os.Getenv("POSTGRES_DSN")
 
 	if steamAPIKey == "" {

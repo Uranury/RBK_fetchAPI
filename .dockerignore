@@ -1,0 +1,39 @@
+# Binaries
+/bin
+/bin/*
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+myapp
+
+# VCS
+.git
+.gitignore
+
+# Editor/IDE
+*.swp
+*.swo
+*.log
+*.tmp
+*.bak
+.vscode
+.idea
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test output
+coverage.*
+*.coverprofile
+
+# Dependency files
+vendor/
+
+# Docker garbage
+.dockerignore
+.env

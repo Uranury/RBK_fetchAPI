@@ -20,29 +20,37 @@ const (
 )
 
 func (s *SteamService) GetPlayerAchievements(ctx context.Context, steamID, appID string) (*models.PlayerAchievements, *apperrors.APIError) {
+	start := time.Now()
+	endpoint := "/achievements:GetPlayerAchievements"
+	params := map[string]interface{}{"steamID": steamID, "appID": appID}
+
 	cacheKey := fmt.Sprintf("player_achievements:%s:game:%s", steamID, appID)
 
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()
 	if err == nil {
 		var achievements models.PlayerAchievements
 		if err := json.Unmarshal([]byte(cached), &achievements); err == nil {
+			s.logRequest(endpoint, params, true, "", time.Since(start))
 			return &achievements, nil
 		}
 	}
 
 	playerAchievements, apiError := s.fetchPlayerAchievements(ctx, steamID, appID)
 	if apiError != nil {
+		s.logRequest(endpoint, params, false, apiError.Message, time.Since(start))
 		return nil, apiError
 	}
 
 	gameSchema, apiError := s.fetchGameSchema(ctx, appID)
 	if apiError != nil {
+		s.logRequest(endpoint, params, false, apiError.Message, time.Since(start))
 		return nil, apiError
 	}
 
 	// Get global achievement percentages for rarity
-	globalPercentages, err := s.fetchGlobalAchievementPercentages(ctx, appID)
-	if err != nil {
+	globalPercentages, apiError := s.fetchGlobalAchievementPercentages(ctx, appID)
+	if apiError != nil {
+		s.logRequest(endpoint, params, false, apiError.Message, time.Since(start))
 		return nil, apiError
 	}
 
@@ -99,6 +107,7 @@ func (s *SteamService) GetPlayerAchievements(ctx context.Context, steamID, appID
 		}
 	}
 
+	s.logRequest(endpoint, params, true, "", time.Since(start))
 	return result, nil
 }
 
@@ -196,7 +205,7 @@ func (s *SteamService) fetchGameSchema(ctx context.Context, appID string) (*mode
 	return &result, nil
 }
 
-func (s *SteamService) fetchGlobalAchievementPercentages(ctx context.Context, appID string) (*models.GlobalAchievementPercentagesResponse, error) {
+func (s *SteamService) fetchGlobalAchievementPercentages(ctx context.Context, appID string) (*models.GlobalAchievementPercentagesResponse, *apperrors.APIError) {
 	cacheKey := fmt.Sprintf("global_achievement_percentages:%s", appID)
 
 	cached, err := s.Cache.Get(ctx, cacheKey).Result()

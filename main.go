@@ -10,13 +10,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// TODO: Write unit tests for services
-// TODO: Add rate limiting
-// TODO: Make docker and docker compose files
-// TODO: Push to remote
-// TODO: Add a README.md, .env.example, dockerignore
-// TODO: Prepare a presentation
-
 // @title           Steam API Wrapper
 // @version         1.0
 // @description     This is a service that resolves Steam vanity URLs and returns SteamIDs.

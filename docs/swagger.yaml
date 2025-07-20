@@ -1,4 +1,115 @@
 basePath: /
+definitions:
+  apperrors.APIError:
+    properties:
+      message:
+        type: string
+      statusCode:
+        type: integer
+    type: object
+  models.Achievement:
+    properties:
+      achieved:
+        type: boolean
+      description:
+        type: string
+      displayName:
+        type: string
+      icon:
+        type: string
+      iconGray:
+        type: string
+      name:
+        type: string
+      rarity:
+        description: Percentage of players who have this achievement
+        type: number
+      unlockTime:
+        type: string
+    type: object
+  models.OwnedGamesResponse:
+    properties:
+      response:
+        properties:
+          game_count:
+            type: integer
+          games:
+            items:
+              properties:
+                appid:
+                  type: integer
+                has_community_visible_stats:
+                  type: boolean
+                img_icon_url:
+                  type: string
+                img_logo_url:
+                  type: string
+                name:
+                  type: string
+                playtime_forever:
+                  type: integer
+              type: object
+            type: array
+        type: object
+    type: object
+  models.PlayerAchievements:
+    properties:
+      achievements:
+        items:
+          $ref: '#/definitions/models.Achievement'
+        type: array
+      gameName:
+        type: string
+      steamID:
+        type: string
+    type: object
+  models.Summary:
+    properties:
+      response:
+        properties:
+          players:
+            items:
+              properties:
+                avatar:
+                  type: string
+                avatarfull:
+                  type: string
+                avatarhash:
+                  type: string
+                avatarmedium:
+                  type: string
+                commentpermission:
+                  type: integer
+                communityvisibilitystate:
+                  type: integer
+                lastlogoff:
+                  type: integer
+                loccountrycode:
+                  type: string
+                locstatecode:
+                  type: string
+                personaname:
+                  type: string
+                personastate:
+                  type: integer
+                personastateflags:
+                  type: integer
+                primaryclanid:
+                  type: string
+                profilestate:
+                  type: integer
+                profileurl:
+                  type: string
+                realname:
+                  type: string
+                steamid:
+                  type: string
+                timecreated:
+                  type: integer
+              type: object
+            type: array
+        type: object
+    type: object
 host: localhost:8080
 info:
   contact: {}
@@ -6,6 +117,72 @@ info:
   title: Steam API Wrapper
   version: "1.0"
 paths:
+  /achievements:
+    get:
+      parameters:
+      - description: Steam ID of the user
+        in: query
+        name: steamID
+        required: true
+        type: string
+      - description: App ID of the game
+        in: query
+        name: appID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.PlayerAchievements'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/apperrors.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperrors.APIError'
+      summary: returns all the achievements the user have for a game with all the
+        details
+      tags:
+      - gamesInfo
+  /games:
+    get:
+      parameters:
+      - description: Steam ID
+        in: query
+        name: steamID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.OwnedGamesResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperrors.APIError'
+      summary: returns user's owned games
+      tags:
+      - gamesInfo
   /steam_id:
     get:
       parameters:
@@ -29,13 +206,47 @@ paths:
             additionalProperties:
               type: string
             type: object
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apperrors.APIError'
         "500":
           description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperrors.APIError'
+      summary: Retrieve steamID under vanityID if it exists
+      tags:
+      - steamProfile
+  /summary:
+    get:
+      parameters:
+      - description: Steam ID
+        in: query
+        name: steamID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Summary'
+        "400":
+          description: Bad Request
           schema:
             additionalProperties:
               type: string
             type: object
-      summary: Retrieve steamID under vanityID if it exists
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/apperrors.APIError'
+        "500":
+          description: Internal Server Error
+          schema:
+            $ref: '#/definitions/apperrors.APIError'
+      summary: returns general info about the user
       tags:
       - steamProfile
 swagger: "2.0"
