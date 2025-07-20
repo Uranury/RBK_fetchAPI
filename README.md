@@ -33,15 +33,18 @@ A lightweight Go monolith app that integrates with the [Steam Web API](https://d
 ## 📁 Folder Structure
 
 ```
+config/           # Environment loading and config setup
+docs/             # Swagger and API documentation
 internal/
-  handlers/       # HTTP endpoints
-  services/       # Business logic and Steam API
-  apperrors/      # Centralized error handling
-  models/         # API response data structures
-  repositories/   # Database access layer
-  server/         # App bootstrap logic
+  handlers/       # HTTP route handlers
+  services/       # Business logic and Steam API integration
+  apperrors/      # Centralized error definitions and formatting
+  models/         # Data models matching API responses
+  repositories/   # Database access and request history logging
+  server/         # App server and bootstrap logic
   db/
-    migrations/   # DB schema migrations
+    migrations/   # Database schema migrations
+main.go           # Entry point of the app
 ```
 
 ---
