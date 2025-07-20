@@ -12,7 +12,7 @@ import (
 
 // @title           Steam API Wrapper
 // @version         1.0
-// @description     This is a service that resolves Steam vanity URLs and returns SteamIDs.
+// @description     A lightweight service that integrates with the Steam Web API to fetch user profiles, owned games, and achievement data.
 // @host            localhost:8080
 // @BasePath        /
 func main() {
