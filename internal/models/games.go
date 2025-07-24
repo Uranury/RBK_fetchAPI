@@ -13,12 +13,3 @@ type OwnedGamesResponse struct {
 		} `json:"games"`
 	} `json:"response"`
 }
-
-type AchievementInfo struct {
-	Name        string  `json:"name"`
-	DisplayName string  `json:"display_name"`
-	Description string  `json:"description"`
-	Icon        string  `json:"icon"`
-	Hidden      bool    `json:"hidden"`
-	Rarity      float64 `json:"rarity"`
-}
